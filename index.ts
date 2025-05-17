@@ -104,7 +104,7 @@ async function processCSVsToExcel() {
     workbook.worksheets.splice(0, 0, workbook.worksheets.pop()!);
     // Write the workbook
     await workbook.xlsx.writeFile(outputFile);
-    console.log('Processed all CSV files into', outputFile);
+    console.log('Processed all CSV files into', path.relative(process.cwd(), outputFile));
 }
 
 processCSVsToExcel();
