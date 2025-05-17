@@ -29,6 +29,3 @@ Thumbs.db
 
 # Misc
 coverage/
-
-# Excel output
-*.xlsx
