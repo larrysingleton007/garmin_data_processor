@@ -21,7 +21,7 @@ async function processCSVsToExcel() {
     // Create the summary worksheet
     const summarySheet = workbook.addWorksheet('Summary');
     // Add headers
-    const summaryHeaders = ['File', 'Shots', 'Avg Speed', 'Std Dev', 'Spread'];
+    const summaryHeaders = ['File', 'Date', 'Shots', 'Avg Speed', 'Std Dev', 'Spread'];
     summarySheet.addRow(summaryHeaders);
     // Style the header row
     summarySheet.getRow(1).eachCell(cell => {
@@ -30,12 +30,16 @@ async function processCSVsToExcel() {
     });
     // Set column widths
     summarySheet.columns = [
-        { header: 'File', width: 45 },
+        { header: 'File', width: 40 },
+        { header: 'Date', width: 18 },
         { header: 'Shots', width: 8 },
-        { header: 'Avg Speed', width: 15 },
+        { header: 'Avg Speed', width: 12 },
         { header: 'Std Dev', width: 10 },
         { header: 'Spread', width: 8 },
     ];
+
+    // Collect summary rows
+    const summaryRows: any[] = [];
 
     for (const file of files) {
         const filePath = path.join(dataDir, file);
@@ -59,8 +63,16 @@ async function processCSVsToExcel() {
         const avgSpeed = findStat('AVERAGE SPEED');
         const stdDev = findStat('STD DEV');
         const spread = findStat('SPREAD');
-        // Add row to summary
-        summarySheet.addRow([file, shotCount, avgSpeed, stdDev, spread]);
+        // Find the Date field (look for line starting with 'Date')
+        const dateLine = csvLines.find(l => l.toUpperCase().startsWith('DATE'));
+        let dateValue = '';
+        if (dateLine) {
+            // Use a regex to extract the quoted string after the first comma
+            const match = dateLine.match(/Date,"([^"]+)"/i);
+            dateValue = match ? match[1].trim() : '';
+        }
+        // Add to summaryRows array
+        summaryRows.push({ file, shotCount, avgSpeed, stdDev, spread, dateValue });
         // Add worksheet for this CSV
         const ws = workbook.addWorksheet(path.basename(file, '.csv').slice(0, 31));
         // Add CSV data
@@ -71,6 +83,23 @@ async function processCSVsToExcel() {
         // Optionally, set column widths for data sheets
         ws.columns = header.split(',').map(h => ({ header: h, width: 15 }));
     }
+    // Sort summaryRows by dateValue ascending (parse as date)
+    summaryRows.sort((a, b) => {
+        const da = new Date(a.dateValue).getTime();
+        const db = new Date(b.dateValue).getTime();
+        return da - db;
+    });
+    // Add sorted rows to summarySheet
+    summaryRows.forEach(row => {
+        summarySheet.addRow([
+            row.file,
+            row.dateValue,
+            row.shotCount,
+            row.avgSpeed,
+            row.stdDev,
+            row.spread
+        ]);
+    });
     // Move summary to first position
     workbook.worksheets.splice(0, 0, workbook.worksheets.pop()!);
     // Write the workbook
