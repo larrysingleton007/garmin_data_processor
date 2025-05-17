@@ -8,10 +8,13 @@ This project processes CSV data files exported from Garmin (or similar) devices,
 - Each CSV is added as its own tab in the output Excel file
 - The summary tab (first tab) includes:
   - File name
+  - Date and time (from the Date field in each CSV)
   - Number of shots (rows with numeric `#`)
   - Average Speed (from summary row in CSV)
   - Standard Deviation (from summary row in CSV)
   - Spread (from summary row in CSV)
+- Summary rows are sorted by date and time in ascending order
+- Uses [exceljs](https://www.npmjs.com/package/exceljs) for Excel file creation and formatting
 
 ## Prerequisites
 - [Node.js](https://nodejs.org/) (v18+ recommended)
@@ -31,7 +34,7 @@ To process the CSV files and generate the Excel summary:
 pnpm exec ts-node index.ts
 ```
 
-The output file will be created at `output/processed.xlsx`.
+The output file will be created at `output/summary.xlsx`.
 
 ## Project Structure
 - `index.ts` - Main script for processing CSVs and generating the Excel file
