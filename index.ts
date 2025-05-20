@@ -21,7 +21,7 @@ async function processCSVsToExcel() {
     // Create the summary worksheet
     const summarySheet = workbook.addWorksheet('Summary');
     // Add headers
-    const summaryHeaders = ['File', 'Date', 'Shots', 'Avg Speed', 'Std Dev', 'Spread'];
+    const summaryHeaders = ['File', 'Date', 'Shots', 'Avg Speed', 'Std Dev', 'Spread', 'Speed Sum'];
     summarySheet.addRow(summaryHeaders);
     // Style the header row
     summarySheet.getRow(1).eachCell(cell => {
@@ -36,6 +36,7 @@ async function processCSVsToExcel() {
         { header: 'Avg Speed', width: 12 },
         { header: 'Std Dev', width: 10 },
         { header: 'Spread', width: 8 },
+        { header: 'Speed Sum', width: 12 },
     ];
 
     // Collect summary rows
@@ -53,6 +54,12 @@ async function processCSVsToExcel() {
         const cleanedCsv = [header, ...csvLines.slice(2)].join('\n');
         const records = parse(cleanedCsv, { columns: true, skip_empty_lines: true, relax_column_count: true });
         const shotCount = records.filter((row: any) => !isNaN(Number(row['#']))).length;
+        // Calculate sum of Speed column (only for rows with a valid shot index)
+        const speedSum = records.reduce((sum: number, row: any) => {
+            const isShot = !isNaN(Number(row['#']));
+            const speed = row['Speed (FPS)'];
+            return sum + (isShot && typeof speed === 'string' && !isNaN(Number(speed)) ? Number(speed) : 0);
+        }, 0);
         const findStat = (label: string) => {
             const line = csvLines.find(l => l.toUpperCase().startsWith(label));
             if (!line) return '';
@@ -72,13 +79,22 @@ async function processCSVsToExcel() {
             dateValue = match ? match[1].trim() : '';
         }
         // Add to summaryRows array
-        summaryRows.push({ file, shotCount, avgSpeed, stdDev, spread, dateValue });
+        summaryRows.push({ file, shotCount, avgSpeed, stdDev, spread, dateValue, speedSum });
         // Add worksheet for this CSV
         const ws = workbook.addWorksheet(path.basename(file, '.csv').slice(0, 31));
         // Add CSV data
-        ws.addRow(header.split(','));
+        // Convert values to numbers where possible for the header and each row
+        const headerFields = header.split(',');
+        ws.addRow(headerFields);
         records.forEach((row: any) => {
-            ws.addRow(Object.values(row));
+            const values = Object.values(row).map((v, i) => {
+                // Try to convert to number if not empty and not the first column (which may be '#')
+                if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) {
+                    return Number(v);
+                }
+                return v;
+            });
+            ws.addRow(values);
         });
         // Optionally, set column widths for data sheets
         ws.columns = header.split(',').map(h => ({ header: h, width: 15 }));
@@ -97,9 +113,27 @@ async function processCSVsToExcel() {
             row.shotCount,
             row.avgSpeed,
             row.stdDev,
-            row.spread
+            row.spread,
+            row.speedSum
         ]);
     });
+    // Add a totals row for Shots and Speed Sum
+    const totalShots = summaryRows.reduce((sum, row) => sum + row.shotCount, 0);
+    const totalSpeedSum = summaryRows.reduce((sum, row) => sum + row.speedSum, 0);
+    const overallAvg = totalShots > 0 ? totalSpeedSum / totalShots : 0;
+    const totalRow = [
+        'TOTAL', '', totalShots, '', '', '', totalSpeedSum
+    ];
+    const totalRowRef = summarySheet.addRow(totalRow);
+    totalRowRef.font = { bold: true, size: 14 };
+    totalRowRef.alignment = { horizontal: 'center', vertical: 'middle' };
+    // Add overall average row
+    const avgRow = [
+        'OVERALL AVG', '', '', overallAvg, '', '', ''
+    ];
+    const avgRowRef = summarySheet.addRow(avgRow);
+    avgRowRef.font = { bold: true, size: 14 };
+    avgRowRef.alignment = { horizontal: 'center', vertical: 'middle' };
     // Move summary to first position
     workbook.worksheets.splice(0, 0, workbook.worksheets.pop()!);
     // Write the workbook
