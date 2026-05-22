@@ -52,12 +52,12 @@ async function processCSVsToExcel() {
         }
         const header = csvLines[1].replace(/^\uFEFF/, '');
         const cleanedCsv = [header, ...csvLines.slice(2)].join('\n');
-        const records = parse(cleanedCsv, { columns: true, skip_empty_lines: true, relax_column_count: true });
+        const records = parse(cleanedCsv, { columns: true, skip_empty_lines: true, relax_column_count: true, relax_quotes: true });
         const shotCount = records.filter((row: any) => !isNaN(Number(row['#']))).length;
         // Calculate sum of Speed column (only for rows with a valid shot index)
         const speedSum = records.reduce((sum: number, row: any) => {
             const isShot = !isNaN(Number(row['#']));
-            const speed = row['Speed (FPS)'];
+            const speed = row['SPEED (FPS)'];
             return sum + (isShot && typeof speed === 'string' && !isNaN(Number(speed)) ? Number(speed) : 0);
         }, 0);
         const findStat = (label: string) => {
@@ -75,7 +75,7 @@ async function processCSVsToExcel() {
         let dateValue = '';
         if (dateLine) {
             // Use a regex to extract the quoted string after the first comma
-            const match = dateLine.match(/Date,"([^"]+)"/i);
+            const match = dateLine.match(/Date,\s*"([^"]+)"/i);
             dateValue = match ? match[1].trim() : '';
         }
         // Add to summaryRows array
