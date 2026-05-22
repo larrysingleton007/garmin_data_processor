@@ -36,6 +36,14 @@ pnpm exec ts-node index.ts
 
 The output file will be created at `output/summary.xlsx`.
 
+## Copying Tabs Into Another Workbook
+To pull the generated tabs into another workbook (e.g. `178_gr.xlsx`), the manual Excel approach is the easiest:
+
+1. Open both files in Excel.
+2. In `summary.xlsx`, right-click a tab → **Move or Copy...**
+3. Set **To book** to `178_gr.xlsx`, check **Create a copy**, and pick where to place it.
+4. Repeat for each tab.
+
 ## Project Structure
 - `index.ts` - Main script for processing CSVs and generating the Excel file
 - `data_files/` - Place your CSV files here
