@@ -18,28 +18,11 @@ const files = fs.readdirSync(dataDir).filter(f => f.endsWith('.csv'));
 
 async function processCSVsToExcel() {
     const workbook = new ExcelJS.Workbook();
-    // Create the summary worksheet
+    // Create the Summary sheet first so it stays the first tab; it is populated
+    // (transposed) after all rows are collected and sorted.
     const summarySheet = workbook.addWorksheet('Summary');
-    // Add headers
-    const summaryHeaders = ['File', 'Date', 'Shots', 'Avg Speed', 'Std Dev', 'Spread', 'Speed Sum'];
-    summarySheet.addRow(summaryHeaders);
-    // Style the header row
-    summarySheet.getRow(1).eachCell(cell => {
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.font = { bold: true, underline: true, size: 14 };
-    });
-    // Set column widths
-    summarySheet.columns = [
-        { header: 'File', width: 40 },
-        { header: 'Date', width: 18 },
-        { header: 'Shots', width: 8 },
-        { header: 'Avg Speed', width: 12 },
-        { header: 'Std Dev', width: 10 },
-        { header: 'Spread', width: 8 },
-        { header: 'Speed Sum', width: 12 },
-    ];
 
-    // Collect summary rows
+    // Collect summary rows.
     const summaryRows: any[] = [];
 
     for (const file of files) {
@@ -53,13 +36,14 @@ async function processCSVsToExcel() {
         const header = csvLines[1].replace(/^\uFEFF/, '');
         const cleanedCsv = [header, ...csvLines.slice(2)].join('\n');
         const records = parse(cleanedCsv, { columns: true, skip_empty_lines: true, relax_column_count: true, relax_quotes: true });
+        // Per-shot speeds (rows with a valid numeric shot index and parseable speed)
+        const speeds: number[] = records
+            .filter((row: any) => !isNaN(Number(row['#'])))
+            .map((row: any) => Number(row['SPEED (FPS)']))
+            .filter((n: number) => !isNaN(n));
         const shotCount = records.filter((row: any) => !isNaN(Number(row['#']))).length;
-        // Calculate sum of Speed column (only for rows with a valid shot index)
-        const speedSum = records.reduce((sum: number, row: any) => {
-            const isShot = !isNaN(Number(row['#']));
-            const speed = row['SPEED (FPS)'];
-            return sum + (isShot && typeof speed === 'string' && !isNaN(Number(speed)) ? Number(speed) : 0);
-        }, 0);
+        const highest = speeds.length ? Math.max(...speeds) : '';
+        const lowest = speeds.length ? Math.min(...speeds) : '';
         const findStat = (label: string) => {
             const line = csvLines.find(l => l.toUpperCase().startsWith(label));
             if (!line) return '';
@@ -79,7 +63,7 @@ async function processCSVsToExcel() {
             dateValue = match ? match[1].trim() : '';
         }
         // Add to summaryRows array
-        summaryRows.push({ file, shotCount, avgSpeed, stdDev, spread, dateValue, speedSum });
+        summaryRows.push({ file, shotCount, avgSpeed, highest, lowest, stdDev, spread, dateValue });
         // Add worksheet for this CSV
         const ws = workbook.addWorksheet(path.basename(file, '.csv').slice(0, 31));
         // Add CSV data
@@ -105,37 +89,36 @@ async function processCSVsToExcel() {
         const db = new Date(b.dateValue).getTime();
         return da - db;
     });
-    // Add sorted rows to summarySheet
-    summaryRows.forEach(row => {
-        summarySheet.addRow([
-            row.file,
-            row.dateValue,
-            row.shotCount,
-            row.avgSpeed,
-            row.stdDev,
-            row.spread,
-            row.speedSum
-        ]);
+    // Build the transposed Summary sheet: one column per session (numbered by
+    // chronological order), one row per statistic.
+    // Header row: "Row" label followed by a session number per file.
+    summarySheet.addRow(['Row', ...summaryRows.map((_, i) => i + 1)]);
+    // Each stat becomes a row, in the order of the target layout (Grains omitted).
+    const statRows: Array<[string, (r: any) => any]> = [
+        ['Shots', r => r.shotCount],
+        ['V0 Avg', r => r.avgSpeed],
+        ['Highest', r => r.highest],
+        ['Lowest', r => r.lowest],
+        ['Spread', r => r.spread],
+        ['Std Dev', r => r.stdDev],
+    ];
+    statRows.forEach(([label, getter]) => {
+        summarySheet.addRow([label, ...summaryRows.map(getter)]);
     });
-    // Add a totals row for Shots and Speed Sum
-    const totalShots = summaryRows.reduce((sum, row) => sum + row.shotCount, 0);
-    const totalSpeedSum = summaryRows.reduce((sum, row) => sum + row.speedSum, 0);
-    const overallAvg = totalShots > 0 ? totalSpeedSum / totalShots : 0;
-    const totalRow = [
-        'TOTAL', '', totalShots, '', '', '', totalSpeedSum
-    ];
-    const totalRowRef = summarySheet.addRow(totalRow);
-    totalRowRef.font = { bold: true, size: 14 };
-    totalRowRef.alignment = { horizontal: 'center', vertical: 'middle' };
-    // Add overall average row
-    const avgRow = [
-        'OVERALL AVG', '', '', overallAvg, '', '', ''
-    ];
-    const avgRowRef = summarySheet.addRow(avgRow);
-    avgRowRef.font = { bold: true, size: 14 };
-    avgRowRef.alignment = { horizontal: 'center', vertical: 'middle' };
-    // Move summary to first position
-    workbook.worksheets.splice(0, 0, workbook.worksheets.pop()!);
+    // Bold the header row and the stat-label column.
+    summarySheet.getRow(1).eachCell(cell => {
+        cell.font = { bold: true };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+    summarySheet.getColumn(1).eachCell(cell => {
+        cell.font = { bold: true };
+    });
+    // Column widths: wider label column, uniform session columns.
+    summarySheet.getColumn(1).width = 12;
+    for (let c = 2; c <= summaryRows.length + 1; c++) {
+        summarySheet.getColumn(c).width = 10;
+        summarySheet.getColumn(c).alignment = { horizontal: 'center' };
+    }
     // Write the workbook
     await workbook.xlsx.writeFile(outputFile);
     console.log('Processed all CSV files into', path.relative(process.cwd(), outputFile));
